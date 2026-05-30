@@ -2,51 +2,74 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game Lines + Firebase Leaderboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Game Lines Mobile Optimized</title>
     <style>
-        body { font-family: Arial, sans-serif; display: flex; justify-content: center; background-color: #f0f2f5; padding: 20px; }
-        .container { display: flex; gap: 30px; }
-        .game-area { text-align: center; }
-        .board { display: grid; grid-template-columns: repeat(9, 40px); grid-template-rows: repeat(9, 40px); gap: 2px; background-color: #ccc; padding: 2px; border-radius: 5px; margin: 0 auto; }
-        .cell { width: 40px; height: 40px; background-color: #fff; border-radius: 3px; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+        /* Tối ưu chống bôi đen văn bản khi chơi game trên điện thoại */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+        
+        /* Container tự động chuyển thành hàng dọc trên Mobile và hàng ngang trên PC */
+        .container { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 800px; align-items: center; }
+        
+        .game-area { width: 100%; max-width: 400px; text-align: center; }
+        h1 { margin: 5px 0; font-size: 24px; }
+        
+        /* Bàn cờ co giãn thông minh dùng aspect-ratio */
+        .board { display: grid; grid-template-columns: repeat(9, 1fr); aspect-ratio: 1 / 1; gap: 2px; background-color: #ccc; padding: 2px; border-radius: 5px; width: 100%; margin: 0 auto; }
+        
+        /* Ô cờ tối ưu phản hồi chạm trên Mobile */
+        .cell { background-color: #fff; border-radius: 3px; display: flex; justify-content: center; align-items: center; cursor: pointer; aspect-ratio: 1 / 1; touch-action: manipulation; }
         .cell:hover { background-color: #e0e0e0; }
         
-        /* Quả bóng và hiệu ứng */
-        .ball { width: 30px; height: 30px; border-radius: 50%; box-shadow: inset -5px -5px 10px rgba(0,0,0,0.3); transition: all 0.1s ease-in-out; }
-        .ball.selected { transform: scale(1.2); animation: bounce 0.5s infinite alternate; }
-        @keyframes bounce { from { transform: scale(1.1) translateY(0); } to { transform: scale(1.1) translateY(-5px); } }
+        /* Quả bóng co giãn theo tỷ lệ % của ô cờ */
+        .ball { width: 85%; height: 85%; border-radius: 50%; box-shadow: inset -4px -4px 8px rgba(0,0,0,0.3); transition: all 0.1s ease-in-out; }
+        .ball.selected { transform: scale(1.15); animation: bounce 0.5s infinite alternate; }
+        @keyframes bounce { from { transform: scale(1.1) translateY(0); } to { transform: scale(1.1) translateY(-10%); } }
         
-        .leaderboard { width: 300px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .leaderboard h2 { margin-top: 0; text-align: center; color: #333; }
-        #scoreList { list-style: none; padding: 0; }
-        #scoreList li { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; }
+        /* Bảng điểm cao tự co giãn rộng ra trên Mobile */
+        .leaderboard { width: 100%; max-width: 400px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .leaderboard h2 { margin-top: 0; text-align: center; color: #333; font-size: 18px; }
+        #scoreList { list-style: none; padding: 0; margin: 0; }
+        #scoreList li { display: flex; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 14px; }
         #scoreList li:nth-child(even) { background-color: #f9f9f9; }
         
-        .score-info { font-size: 20px; font-weight: bold; margin: 10px 0; }
+        .score-info { font-size: 16px; font-weight: bold; margin: 8px 0; }
         
-        /* Cụm thông tin lượt liên quan bóng */
-        .panels-container { display: flex; justify-content: center; gap: 20px; margin-bottom: 15px; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        .panel-item { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 14px; font-weight: bold; color: #555; }
-        .balls-row { display: flex; gap: 5px; height: 20px; align-items: center; }
+        /* Khu vực hiển thị lượt bóng tới */
+        .panels-container { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; background: white; padding: 8px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .panel-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: bold; color: #555; flex: 1; }
+        .balls-row { display: flex; gap: 4px; height: 18px; align-items: center; }
         
-        .next-ball { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset -3px -3px 6px rgba(0,0,0,0.3); }
+        .next-ball { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset -2px -2px 4px rgba(0,0,0,0.3); }
 
-        /* Bảng màu mới - Phân tách rõ ràng Cam và Vàng */
-        .color-1 { background-color: #ff3333; } /* Đỏ */
-        .color-2 { background-color: #3388ff; } /* Xanh dương */
-        .color-3 { background-color: #22c55e; } /* Xanh lá */
-        .color-4 { background-color: #ffff00; } /* Vàng chanh sáng rực */
-        .color-5 { background-color: #ff6600; } /* Cam đậm hẳn */
-        .color-6 { background-color: #a855f7; } /* Tím */
+        /* Bảng màu chuẩn phân tách Cam và Vàng */
+        .color-1 { background-color: #ff3333; }
+        .color-2 { background-color: #3388ff; }
+        .color-3 { background-color: #22c55e; }
+        .color-4 { background-color: #ffff00; }
+        .color-5 { background-color: #ff6600; }
+        .color-6 { background-color: #a855f7; }
 
-        /* Modal chung */
-        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); text-align: center; z-index: 100; width: 300px; }
-        .modal input { padding: 10px; margin: 15px 0; width: 80%; border: 1px solid #ccc; border-radius: 5px; }
-        .modal button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; }
-        .modal button:hover { background: #0056b3; }
+        /* Modal thích ứng màn hình */
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); text-align: center; z-index: 100; width: 85%; max-width: 320px; }
+        .modal input { padding: 10px; margin: 15px 0; width: 100%; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
+        .modal button { padding: 12px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%; }
         
         #startModal { display: block; }
+
+        /* --- CẤU HÌNH GIAO DIỆN TRÊN MÀN HÌNH LỚN (PC/TABLET) --- */
+        @media (min-width: 768px) {
+            body { padding: 20px; }
+            .container { flex-direction: row; align-items: flex-start; justify-content: center; gap: 30px; }
+            .game-area, .leaderboard { max-width: 380px; }
+            h1 { font-size: 32px; margin-bottom: 15px; }
+            .score-info { font-size: 20px; margin: 15px 0; }
+            .panel-item { font-size: 13px; }
+            .next-ball { width: 20px; height: 20px; }
+            .balls-row { height: 20px; gap: 6px; }
+        }
     </style>
 </head>
 <body>
@@ -54,23 +77,23 @@
 <div class="container">
     <div class="game-area">
         <h1>Game Lines</h1>
-        <div class="score-info">Người chơi: <span id="displayPlayerName" style="color: #007bff;">---</span> | Điểm: <span id="score">0</span></div>
+        <div class="score-info">bạn: <span id="displayPlayerName" style="color: #007bff;">---</span> | Điểm: <span id="score">0</span></div>
         
         <div class="panels-container">
             <div class="panel-item">
-                <span>Màu lượt tới:</span>
+                <span>Lượt tới:</span>
                 <div id="nextBalls" class="balls-row"></div>
             </div>
-            <div style="border-left: 1px solid #ddd; height: 40px;"></div>
+            <div style="border-left: 1px solid #ddd; height: 30px;"></div>
             <div class="panel-item">
-                <span>Tất cả màu trong game:</span>
+                <span>Bảng màu:</span>
                 <div class="balls-row">
-                    <div class="next-ball color-1" title="Đỏ"></div>
-                    <div class="next-ball color-2" title="Xanh dương"></div>
-                    <div class="next-ball color-3" title="Xanh lá"></div>
-                    <div class="next-ball color-4" title="Vàng"></div>
-                    <div class="next-ball color-5" title="Cam"></div>
-                    <div class="next-ball color-6" title="Tím"></div>
+                    <div class="next-ball color-1"></div>
+                    <div class="next-ball color-2"></div>
+                    <div class="next-ball color-3"></div>
+                    <div class="next-ball color-4"></div>
+                    <div class="next-ball color-5"></div>
+                    <div class="next-ball color-6"></div>
                 </div>
             </div>
         </div>
@@ -79,7 +102,7 @@
     </div>
 
     <div class="leaderboard">
-        <h2>🏆 Top Điểm Cao</h2>
+        <h2>🏆 Top 10 Điểm Cao</h2>
         <ul id="scoreList">
             <li>Đang tải...</li>
         </ul>
@@ -89,15 +112,14 @@
 <div id="startModal" class="modal">
     <h2>Chào mừng!</h2>
     <p>Vui lòng nhập tên để bắt đầu</p>
-    <input type="text" id="playerNameInput" placeholder="Tên của bạn..." />
-    <br>
+    <input type="text" id="playerNameInput" placeholder="Tên của bạn..." maxlength="15" />
     <button id="startBtn">Vào Game</button>
 </div>
 
 <div id="gameOverModal" class="modal">
     <h2>Game Over!</h2>
     <p>Điểm của bạn: <b id="finalScore" style="font-size: 24px; color: #ff4d4d;">0</b></p>
-    <p style="font-size: 14px; color: #666;">Điểm đã được tự động lưu!</p>
+    <p style="font-size: 13px; color: #666;">Điểm đã được tự động lưu!</p>
     <button id="replayBtn">Chơi lại</button>
 </div>
 
@@ -105,7 +127,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-    // Cấu hình Firebase giữ nguyên của bạn
+    // Cấu hình Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyAuwQKAbHS2GBpw5LWik33XcnYQzBtRgFc",
       authDomain: "line-76bbe.firebaseapp.com",
@@ -120,15 +142,15 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // --- GAME LOGIC ---
+    // --- LOGIC GAME TRÒ CHƠI ---
     const boardSize = 9;
-    const numColors = 6; // Đã nâng lên 6 màu để có cả Cam và Vàng riêng biệt
+    const numColors = 6; 
     let grid = Array(boardSize).fill(null).map(() => Array(boardSize).fill(0));
     let score = 0;
     let selectedCell = null;
     let gameOver = false;
     let isAnimating = false;
-    let currentPlayerName = "Người chơi ẩn danh";
+    let currentPlayerName = "Vô danh";
     let nextColors = [];
 
     const boardEl = document.getElementById('board');
@@ -272,7 +294,7 @@
             renderBoard();
 
             if (i < path.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 60));
+                await new Promise(resolve => setTimeout(resolve, 50)); // Đẩy tốc độ chạy bóng nhanh hơn một chút trên mobile
                 grid[curr.r][curr.c] = 0;
             }
         }
