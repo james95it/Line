@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Game Lines Mobile Optimized</title>
+    <title>Game Lines 98 - Full Features</title>
     <style>
         /* Tối ưu chống bôi đen văn bản khi chơi game trên điện thoại */
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
@@ -23,11 +23,14 @@
         .cell { background-color: #fff; border-radius: 3px; display: flex; justify-content: center; align-items: center; cursor: pointer; aspect-ratio: 1 / 1; touch-action: manipulation; }
         .cell:hover { background-color: #e0e0e0; }
         
-        /* Quả bóng co giãn theo tỷ lệ % của ô cờ */
+        /* Quả bóng to co giãn theo tỷ lệ % của ô cờ */
         .ball { width: 85%; height: 85%; border-radius: 50%; box-shadow: inset -4px -4px 8px rgba(0,0,0,0.3); transition: all 0.1s ease-in-out; }
         .ball.selected { transform: scale(1.15); animation: bounce 0.5s infinite alternate; }
         @keyframes bounce { from { transform: scale(1.1) translateY(0); } to { transform: scale(1.1) translateY(-10%); } }
         
+        /* CSS QUẢ BÓNG BÉ XEM TRƯỚC VỊ TRÍ */
+        .ball.mini { width: 35%; height: 35%; box-shadow: inset -1px -1px 3px rgba(0,0,0,0.4); animation: none; pointer-events: none; }
+
         /* Bảng điểm cao tự co giãn rộng ra trên Mobile */
         .leaderboard { width: 100%; max-width: 400px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         .leaderboard h2 { margin-top: 0; text-align: center; color: #333; font-size: 18px; }
@@ -44,13 +47,13 @@
         
         .next-ball { width: 16px; height: 16px; border-radius: 50%; box-shadow: inset -2px -2px 4px rgba(0,0,0,0.3); }
 
-        /* Bảng màu chuẩn phân tách Cam và Vàng */
-        .color-1 { background-color: #ff3333; }
-        .color-2 { background-color: #3388ff; }
-        .color-3 { background-color: #22c55e; }
-        .color-4 { background-color: #ffff00; }
-        .color-5 { background-color: #ff6600; }
-        .color-6 { background-color: #a855f7; }
+        /* BẢNG MÀU MỚI: ĐỎ SẪM VÀ CAM SÁNG TÁCH BIỆT HOÀN TOÀN */
+        .color-1 { background-color: #b80000; } /* Đỏ Sẫm hẳn (Crimson), sắc độ tối đục */
+        .color-2 { background-color: #3388ff; } /* Xanh dương */
+        .color-3 { background-color: #22c55e; } /* Xanh lá */
+        .color-4 { background-color: #ffff00; } /* Vàng chanh sáng */
+        .color-5 { background-color: #ff9100; } /* Cam Neon cực rực, thiên hướng sáng vàng */
+        .color-6 { background-color: #a855f7; } /* Tím */
 
         /* Modal thích ứng màn hình */
         .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 25px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); text-align: center; z-index: 100; width: 85%; max-width: 320px; }
@@ -77,7 +80,7 @@
 <div class="container">
     <div class="game-area">
         <h1>Game Lines</h1>
-        <div class="score-info">bạn: <span id="displayPlayerName" style="color: #007bff;">---</span> | Điểm: <span id="score">0</span></div>
+        <div class="score-info">Bạn: <span id="displayPlayerName" style="color: #007bff;">---</span> | Điểm: <span id="score">0</span></div>
         
         <div class="panels-container">
             <div class="panel-item">
@@ -127,7 +130,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-    // Cấu hình Firebase
+    // Cấu hình Firebase giữ nguyên của bạn
     const firebaseConfig = {
       apiKey: "AIzaSyAuwQKAbHS2GBpw5LWik33XcnYQzBtRgFc",
       authDomain: "line-76bbe.firebaseapp.com",
@@ -151,7 +154,9 @@
     let gameOver = false;
     let isAnimating = false;
     let currentPlayerName = "Vô danh";
-    let nextColors = [];
+    
+    // Mảng lưu thông tin 3 quả bóng sắp ra: [{r, c, color}, ...]
+    let nextTurnBalls = []; 
 
     const boardEl = document.getElementById('board');
     const scoreEl = document.getElementById('score');
@@ -184,33 +189,26 @@
             for (let c = 0; c < boardSize; c++) {
                 const cell = boardEl.children[r * boardSize + c];
                 cell.innerHTML = '';
+                
                 if (grid[r][c] > 0) {
+                    // Hiển thị bóng TO bình thường
                     const ball = document.createElement('div');
                     ball.className = `ball color-${grid[r][c]}`;
                     if (selectedCell && selectedCell.r === r && selectedCell.c === c) {
                         ball.classList.add('selected');
                     }
                     cell.appendChild(ball);
+                } else {
+                    // Kiểm tra xem ô này có nằm trong danh sách BÓNG BÉ dự báo không
+                    const miniBall = nextTurnBalls.find(b => b.r === r && b.c === c);
+                    if (miniBall) {
+                        const ball = document.createElement('div');
+                        ball.className = `ball mini color-${miniBall.color}`;
+                        cell.appendChild(ball);
+                    }
                 }
             }
         }
-    }
-
-    function generateNextColors() {
-        nextColors = [];
-        for (let i = 0; i < 3; i++) {
-            nextColors.push(Math.floor(Math.random() * numColors) + 1);
-        }
-        renderNextColors();
-    }
-
-    function renderNextColors() {
-        nextBallsEl.innerHTML = '';
-        nextColors.forEach(color => {
-            const ball = document.createElement('div');
-            ball.className = `next-ball color-${color}`;
-            nextBallsEl.appendChild(ball);
-        });
     }
 
     function getEmptyCells() {
@@ -223,25 +221,82 @@
         return empty;
     }
 
-    function spawnBalls() {
-        const emptyCells = getEmptyCells();
-        if (emptyCells.length === 0) return endGame();
-
-        let spawnCount = Math.min(nextColors.length, emptyCells.length);
-        for (let i = 0; i < spawnCount; i++) {
-            const randIdx = Math.floor(Math.random() * emptyCells.length);
-            const { r, c } = emptyCells.splice(randIdx, 1)[0];
-            
-            grid[r][c] = nextColors[i];
-            checkLinesAt(r, c);
-        }
+    // Tạo sẵn vị trí và màu sắc cho lượt bóng tới (Hiện bóng bé)
+    function prepareNextTurn() {
+        let emptyCells = getEmptyCells();
+        nextTurnBalls = [];
         
+        if (emptyCells.length === 0) return;
+        
+        let count = Math.min(3, emptyCells.length);
+        for (let i = 0; i < count; i++) {
+            const randIdx = Math.floor(Math.random() * emptyCells.length);
+            const cell = emptyCells.splice(randIdx, 1)[0];
+            const randomColor = Math.floor(Math.random() * numColors) + 1;
+            
+            nextTurnBalls.push({
+                r: cell.r,
+                c: cell.c,
+                color: randomColor
+            });
+        }
+        renderNextColorsPanel();
+    }
+
+    // Cập nhật thanh panel thông báo ở phía trên đầu game
+    function renderNextColorsPanel() {
+        nextBallsEl.innerHTML = '';
+        nextTurnBalls.forEach(ball => {
+            const ballEl = document.createElement('div');
+            ballEl.className = `next-ball color-${ball.color}`;
+            nextBallsEl.appendChild(ballEl);
+        });
+    }
+
+    // Đổi vị trí bóng bé nếu người chơi vừa di chuyển đè lên nó (Nhưng lượt đó ăn điểm nên chưa phóng to)
+    function relocateCoveredMiniBalls() {
+        let emptyCells = getEmptyCells();
+        nextTurnBalls.forEach(ball => {
+            if (grid[ball.r][ball.c] > 0) { // Ô bóng bé bị chiếm mất rồi
+                if (emptyCells.length > 0) {
+                    const randIdx = Math.floor(Math.random() * emptyCells.length);
+                    const newCell = emptyCells.splice(randIdx, 1)[0];
+                    ball.r = newCell.r;
+                    ball.c = newCell.c;
+                }
+            }
+        });
+        renderNextColorsPanel();
+    }
+
+    // Phóng to các quả bóng bé thành bóng to bình thường
+    function growPreviewBalls() {
+        let emptyCells = getEmptyCells();
+        
+        nextTurnBalls.forEach(ball => {
+            // Nếu ô trống thì lớn lên tại chỗ
+            if (grid[ball.r][ball.c] === 0) {
+                grid[ball.r][ball.c] = ball.color;
+                checkLinesAt(ball.r, ball.c);
+            } else {
+                // Nếu ô đó bị chặn do người chơi vừa di chuyển bóng đè lên, đẩy nó sang ô trống khác ngẫu nhiên
+                if (emptyCells.length > 0) {
+                    const randIdx = Math.floor(Math.random() * emptyCells.length);
+                    const newCell = emptyCells.splice(randIdx, 1)[0];
+                    grid[newCell.r][newCell.c] = ball.color;
+                    checkLinesAt(newCell.r, newCell.c);
+                }
+            }
+        });
+
+        renderBoard();
+
         if (getEmptyCells().length === 0) {
-            renderBoard();
             return endGame();
         }
-        
-        generateNextColors();
+
+        // Tạo 3 quả bóng bé mới cho lượt tiếp theo
+        prepareNextTurn();
         renderBoard();
     }
 
@@ -294,7 +349,7 @@
             renderBoard();
 
             if (i < path.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 50)); // Đẩy tốc độ chạy bóng nhanh hơn một chút trên mobile
+                await new Promise(resolve => setTimeout(resolve, 50));
                 grid[curr.r][curr.c] = 0;
             }
         }
@@ -304,8 +359,9 @@
         selectedCell = null;
         
         if (!cleared) {
-            spawnBalls();
+            growPreviewBalls(); // Lượt di chuyển không ăn điểm -> Bóng bé biến thành bóng to
         } else {
+            relocateCoveredMiniBalls(); // Lượt ăn điểm -> Không phóng to bóng bé, chỉ đổi vị trí nếu bị đè
             renderBoard();
         }
         isAnimating = false;
@@ -387,9 +443,18 @@
         document.getElementById('gameOverModal').style.display = 'none';
         initBoard();
         
-        generateNextColors();
-        spawnBalls();
-        spawnBalls();
+        // Thả ngẫu nhiên 5 quả bóng to ban đầu để khởi động trận đấu
+        let emptyCells = getEmptyCells();
+        for (let i = 0; i < 5; i++) {
+            if (emptyCells.length > 0) {
+                const randIdx = Math.floor(Math.random() * emptyCells.length);
+                const { r, c } = emptyCells.splice(randIdx, 1)[0];
+                grid[r][c] = Math.floor(Math.random() * numColors) + 1;
+            }
+        }
+
+        prepareNextTurn(); // Chuẩn bị sẵn 3 vị trí bóng bé đầu tiên
+        renderBoard();
     }
 
     document.getElementById('replayBtn').addEventListener('click', () => {
