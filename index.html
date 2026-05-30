@@ -22,8 +22,12 @@
         #scoreList { list-style: none; padding: 0; }
         #scoreList li { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; }
         #scoreList li:nth-child(even) { background-color: #f9f9f9; }
-        .score-info { font-size: 20px; font-weight: bold; margin: 15px 0; }
         
+        .score-info { font-size: 20px; font-weight: bold; margin: 10px 0; }
+        .next-balls-info { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 15px; font-weight: bold; color: #555; }
+        .next-balls-container { display: flex; gap: 5px; }
+        .next-ball { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset -3px -3px 6px rgba(0,0,0,0.3); }
+
         /* Màu sắc bóng */
         .color-1 { background-color: #ff4d4d; }
         .color-2 { background-color: #4da6ff; }
@@ -46,6 +50,12 @@
     <div class="game-area">
         <h1>Game Lines</h1>
         <div class="score-info">Người chơi: <span id="displayPlayerName" style="color: #007bff;">---</span> | Điểm: <span id="score">0</span></div>
+        
+        <div class="next-balls-info">
+            <span>Tiếp theo:</span>
+            <div id="nextBalls" class="next-balls-container"></div>
+        </div>
+
         <div class="board" id="board"></div>
     </div>
 
@@ -76,7 +86,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-    // Cấu hình Firebase của bạn
+    // Cấu hình Firebase
     const firebaseConfig = {
       apiKey: "AIzaSyAuwQKAbHS2GBpw5LWik33XcnYQzBtRgFc",
       authDomain: "line-76bbe.firebaseapp.com",
@@ -98,11 +108,13 @@
     let score = 0;
     let selectedCell = null;
     let gameOver = false;
-    let isAnimating = false; // Khóa chống click khi bóng đang chạy
+    let isAnimating = false;
     let currentPlayerName = "Người chơi ẩn danh";
+    let nextColors = []; // Mảng chứa các màu sẽ ra tiếp theo
 
     const boardEl = document.getElementById('board');
     const scoreEl = document.getElementById('score');
+    const nextBallsEl = document.getElementById('nextBalls');
 
     document.getElementById('startBtn').addEventListener('click', () => {
         const inputName = document.getElementById('playerNameInput').value.trim();
@@ -143,6 +155,24 @@
         }
     }
 
+    // Sinh ngẫu nhiên 3 màu tiếp theo và cập nhật UI
+    function generateNextColors() {
+        nextColors = [];
+        for (let i = 0; i < 3; i++) {
+            nextColors.push(Math.floor(Math.random() * numColors) + 1);
+        }
+        renderNextColors();
+    }
+
+    function renderNextColors() {
+        nextBallsEl.innerHTML = '';
+        nextColors.forEach(color => {
+            const ball = document.createElement('div');
+            ball.className = `next-ball color-${color}`;
+            nextBallsEl.appendChild(ball);
+        });
+    }
+
     function getEmptyCells() {
         let empty = [];
         for (let r = 0; r < boardSize; r++) {
@@ -157,22 +187,27 @@
         const emptyCells = getEmptyCells();
         if (emptyCells.length === 0) return endGame();
 
-        let spawnCount = Math.min(3, emptyCells.length);
+        let spawnCount = Math.min(nextColors.length, emptyCells.length);
         for (let i = 0; i < spawnCount; i++) {
             const randIdx = Math.floor(Math.random() * emptyCells.length);
             const { r, c } = emptyCells.splice(randIdx, 1)[0];
-            grid[r][c] = Math.floor(Math.random() * numColors) + 1;
+            
+            grid[r][c] = nextColors[i]; // Lấy màu từ mảng nextColors đã chuẩn bị trước
             checkLinesAt(r, c);
         }
         
-        if (getEmptyCells().length === 0) endGame();
+        if (getEmptyCells().length === 0) {
+            renderBoard();
+            return endGame();
+        }
+        
+        generateNextColors(); // Chuẩn bị sẵn 3 màu cho lượt đi tiếp theo
         renderBoard();
     }
 
-    // Thuật toán BFS cải tiến để tìm và TRẢ VỀ ĐƯỜNG ĐI CHI TIẾT
     function getPath(startR, startC, targetR, targetC) {
         let visited = Array(boardSize).fill(null).map(() => Array(boardSize).fill(false));
-        let parent = Array(boardSize).fill(null).map(() => Array(boardSize).fill(null)); // Lưu vết đường đi
+        let parent = Array(boardSize).fill(null).map(() => Array(boardSize).fill(null));
         let queue = [{ r: startR, c: startC }];
         visited[startR][startC] = true;
         const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -190,7 +225,7 @@
                 if (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize) {
                     if (!visited[nr][nc] && grid[nr][nc] === 0) {
                         visited[nr][nc] = true;
-                        parent[nr][nc] = { r, c }; // Lưu ô trước đó của ô (nr, nc)
+                        parent[nr][nc] = { r, c };
                         queue.push({ r: nr, c: nc });
                     }
                 }
@@ -199,43 +234,39 @@
 
         if (!found) return null;
 
-        // Truy vết ngược lại từ Đích về Đích để lấy mảng đường đi
         let path = [];
         let curr = { r: targetR, c: targetC };
         while (curr) {
             path.push(curr);
             curr = parent[curr.r][curr.c];
         }
-        return path.reverse(); // Đảo ngược mảng để có thứ tự từ [Bắt đầu -> ... -> Đích]
+        return path.reverse();
     }
 
-    // Hàm thực hiện hiệu ứng di chuyển bóng qua từng ô
     async function animateBallMove(path, color) {
         isAnimating = true;
         const start = path[0];
-        grid[start.r][start.c] = 0; // Xóa bóng ở vị trí xuất phát
+        grid[start.r][start.c] = 0;
 
         for (let i = 1; i < path.length; i++) {
             const curr = path[i];
-            grid[curr.r][curr.c] = color; // Đặt bóng vào ô tiếp theo
+            grid[curr.r][curr.c] = color;
             renderBoard();
 
-            // Nếu chưa tới đích, đợi 60 mili-giây rồi xóa bóng ở ô hiện tại để đi tiếp
             if (i < path.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 60));
                 grid[curr.r][curr.c] = 0;
             }
         }
 
-        // Đã đến ô đích cuối cùng
         const target = path[path.length - 1];
         const cleared = checkLinesAt(target.r, target.c);
         selectedCell = null;
         
         if (!cleared) {
-            spawnBalls(); // Nếu không ăn điểm thì sinh bóng mới
+            spawnBalls();
         } else {
-            renderBoard(); // Nếu ăn điểm thì vẽ lại giao diện
+            renderBoard();
         }
         isAnimating = false;
     }
@@ -278,7 +309,7 @@
     }
 
     async function handleCellClick(r, c) {
-        if (gameOver || isAnimating) return; // Chặn click khi đang chạy hiệu ứng
+        if (gameOver || isAnimating) return;
 
         if (grid[r][c] > 0) {
             selectedCell = { r, c };
@@ -287,7 +318,7 @@
             const path = getPath(selectedCell.r, selectedCell.c, r, c);
             if (path) {
                 const color = grid[selectedCell.r][selectedCell.c];
-                await animateBallMove(path, color); // Chạy hiệu ứng di chuyển bất đồng bộ
+                await animateBallMove(path, color);
             }
         }
     }
@@ -315,8 +346,10 @@
         scoreEl.innerText = score;
         document.getElementById('gameOverModal').style.display = 'none';
         initBoard();
-        spawnBalls();
-        spawnBalls();
+        
+        generateNextColors(); // Bốc 3 màu đầu tiên
+        spawnBalls();         // Nhả 3 màu đó lên bàn -> Bốc 3 màu mới
+        spawnBalls();         // Nhả tiếp 3 màu lên bàn -> Bốc 3 màu để show lên góc (Tổng có 6 bóng khởi đầu)
     }
 
     document.getElementById('replayBtn').addEventListener('click', () => {
