@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Lines + Firebase Leaderboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; justify-content: center; background-color: #f0f2f5; padding: 20px; }
+        .container { display: flex; gap: 30px; }
+        .game-area { text-align: center; }
+        .board { display: grid; grid-template-columns: repeat(9, 40px); grid-template-rows: repeat(9, 40px); gap: 2px; background-color: #ccc; padding: 2px; border-radius: 5px; margin: 0 auto; }
+        .cell { width: 40px; height: 40px; background-color: #fff; border-radius: 3px; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+        .cell:hover { background-color: #e0e0e0; }
+        .ball { width: 30px; height: 30px; border-radius: 50%; box-shadow: inset -5px -5px 10px rgba(0,0,0,0.3); transition: transform 0.2s; }
+        .ball.selected { transform: scale(1.2); animation: bounce 0.5s infinite alternate; }
+        @keyframes bounce { from { transform: scale(1.1) translateY(0); } to { transform: scale(1.1) translateY(-5px); } }
+        
+        .leaderboard { width: 300px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .leaderboard h2 { margin-top: 0; text-align: center; color: #333; }
+        #scoreList { list-style: none; padding: 0; }
+        #scoreList li { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; }
+        #scoreList li:nth-child(even) { background-color: #f9f9f9; }
+        .score-info { font-size: 20px; font-weight: bold; margin: 15px 0; }
+        
+        /* Màu sắc bóng */
+        .color-1 { background-color: #ff4d4d; }
+        .color-2 { background-color: #4da6ff; }
+        .color-3 { background-color: #4dff4d; }
+        .color-4 { background-color: #ffcc00; }
+        .color-5 { background-color: #cc33ff; }
+
+        #gameOverModal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); text-align: center; z-index: 100; }
+        #gameOverModal input { padding: 8px; margin: 10px 0; width: 80%; }
+        #gameOverModal button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="game-area">
+        <h1>Game Lines</h1>
+        <div class="score-info">Điểm: <span id="score">0</span></div>
+        <div class="board" id="board"></div>
+    </div>
+
+    <div class="leaderboard">
+        <h2>🏆 Top Điểm Cao</h2>
+        <ul id="scoreList">
+            <li>Đang tải...</li>
+        </ul>
+    </div>
+</div>
+
+<div id="gameOverModal">
+    <h2>Game Over!</h2>
+    <p>Điểm của bạn: <span id="finalScore">0</span></p>
+    <input type="text" id="playerName" placeholder="Nhập tên của bạn..." />
+    <br>
+    <button id="submitScoreBtn">Lưu điểm & Chơi lại</button>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+    // Cấu hình Firebase của bạn
+    const firebaseConfig = {
+      apiKey: "AIzaSyAuwQKAbHS2GBpw5LWik33XcnYQzBtRgFc",
+      authDomain: "line-76bbe.firebaseapp.com",
+      databaseURL: "https://line-76bbe-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "line-76bbe",
+      storageBucket: "line-76bbe.firebasestorage.app",
+      messagingSenderId: "1024456065123",
+      appId: "1:1024456065123:web:6d1d013b3039fddfa4f856",
+      measurementId: "G-TV9PRT5R6K"
+    };
+
+    // Khởi tạo Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // --- GAME LOGIC ---
+    const boardSize = 9;
+    const numColors = 5;
+    let grid = Array(boardSize).fill(null).map(() => Array(boardSize).fill(0));
+    let score = 0;
+    let selectedCell = null;
+    let gameOver = false;
+
+    const boardEl = document.getElementById('board');
+    const scoreEl = document.getElementById('score');
+
+    // Khởi tạo bảng HTML
+    function initBoard() {
+        boardEl.innerHTML = '';
+        for (let r = 0; r < boardSize; r++) {
+            for (let c = 0; c < boardSize; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.r = r;
+                cell.dataset.c = c;
+                cell.addEventListener('click', () => handleCellClick(r, c));
+                boardEl.appendChild(cell);
+            }
+        }
+    }
+
+    // Cập nhật giao diện từ mảng grid
+    function renderBoard() {
+        for (let r = 0; r < boardSize; r++) {
+            for (let c = 0; c < boardSize; c++) {
+                const cell = boardEl.children[r * boardSize + c];
+                cell.innerHTML = '';
+                if (grid[r][c] > 0) {
+                    const ball = document.createElement('div');
+                    ball.className = `ball color-${grid[r][c]}`;
+                    if (selectedCell && selectedCell.r === r && selectedCell.c === c) {
+                        ball.classList.add('selected');
+                    }
+                    cell.appendChild(ball);
+                }
+            }
+        }
+    }
+
+    // Lấy các ô trống
+    function getEmptyCells() {
+        let empty = [];
+        for (let r = 0; r < boardSize; r++) {
+            for (let c = 0; c < boardSize; c++) {
+                if (grid[r][c] === 0) empty.push({ r, c });
+            }
+        }
+        return empty;
+    }
+
+    // Sinh 3 bóng ngẫu nhiên
+    function spawnBalls() {
+        const emptyCells = getEmptyCells();
+        if (emptyCells.length === 0) return endGame();
+
+        let spawnCount = Math.min(3, emptyCells.length);
+        for (let i = 0; i < spawnCount; i++) {
+            const randIdx = Math.floor(Math.random() * emptyCells.length);
+            const { r, c } = emptyCells.splice(randIdx, 1)[0];
+            grid[r][c] = Math.floor(Math.random() * numColors) + 1;
+            checkLinesAt(r, c); // Kiểm tra xem lúc sinh ra có ăn điểm luôn không
+        }
+        
+        if (getEmptyCells().length === 0) endGame();
+        renderBoard();
+    }
+
+    // Tìm đường đi (BFS)
+    function hasPath(startR, startC, targetR, targetC) {
+        let visited = Array(boardSize).fill(null).map(() => Array(boardSize).fill(false));
+        let queue = [{ r: startR, c: startC }];
+        visited[startR][startC] = true;
+        const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+        while (queue.length > 0) {
+            const { r, c } = queue.shift();
+            if (r === targetR && c === targetC) return true;
+
+            for (let [dr, dc] of dirs) {
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize) {
+                    if (!visited[nr][nc] && grid[nr][nc] === 0) {
+                        visited[nr][nc] = true;
+                        queue.push({ r: nr, c: nc });
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // Kiểm tra ăn bóng (4 hướng)
+    function checkLinesAt(r, c) {
+        const color = grid[r][c];
+        if (color === 0) return false;
+        const dirs = [ [[0,1],[0,-1]], [[1,0],[-1,0]], [[1,1],[-1,-1]], [[1,-1],[-1,1]] ];
+        let ballsToRemove = new Set();
+        ballsToRemove.add(`${r},${c}`);
+
+        let lineFormed = false;
+
+        for (let group of dirs) {
+            let currentLine = new Set();
+            currentLine.add(`${r},${c}`);
+            for (let [dr, dc] of group) {
+                let nr = r + dr, nc = c + dc;
+                while (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize && grid[nr][nc] === color) {
+                    currentLine.add(`${nr},${nc}`);
+                    nr += dr; nc += dc;
+                }
+            }
+            if (currentLine.size >= 5) {
+                lineFormed = true;
+                currentLine.forEach(pos => ballsToRemove.add(pos));
+            }
+        }
+
+        if (lineFormed) {
+            ballsToRemove.forEach(pos => {
+                const [rr, cc] = pos.split(',').map(Number);
+                grid[rr][cc] = 0;
+            });
+            score += (ballsToRemove.size * 2); // Cộng điểm
+            scoreEl.innerText = score;
+            return true;
+        }
+        return false;
+    }
+
+    // Xử lý khi click vào ô
+    function handleCellClick(r, c) {
+        if (gameOver) return;
+
+        if (grid[r][c] > 0) {
+            // Chọn bóng
+            selectedCell = { r, c };
+            renderBoard();
+        } else if (selectedCell) {
+            // Di chuyển bóng nếu có đường đi
+            if (hasPath(selectedCell.r, selectedCell.c, r, c)) {
+                grid[r][c] = grid[selectedCell.r][selectedCell.c];
+                grid[selectedCell.r][selectedCell.c] = 0;
+                
+                const cleared = checkLinesAt(r, c);
+                selectedCell = null;
+                
+                if (!cleared) {
+                    spawnBalls(); // Nếu di chuyển không ăn được điểm thì sinh bóng mới
+                } else {
+                    renderBoard(); // Cập nhật lại board nếu ăn được điểm
+                }
+            }
+        }
+    }
+
+    // Kết thúc game
+    function endGame() {
+        gameOver = true;
+        document.getElementById('finalScore').innerText = score;
+        document.getElementById('gameOverModal').style.display = 'block';
+    }
+
+    // Khởi động game
+    function startGame() {
+        grid = Array(boardSize).fill(null).map(() => Array(boardSize).fill(0));
+        score = 0;
+        gameOver = false;
+        selectedCell = null;
+        scoreEl.innerText = score;
+        document.getElementById('gameOverModal').style.display = 'none';
+        initBoard();
+        spawnBalls();
+        spawnBalls(); // Sinh 6 bóng ban đầu
+    }
+
+    // --- FIREBASE LOGIC ---
+
+    // 1. Lắng nghe và hiển thị Top 10 Điểm Cao
+    const topScoresRef = query(ref(db, 'leaderboard'), orderByChild('score'), limitToLast(10));
+    
+    onValue(topScoresRef, (snapshot) => {
+        const scoreList = document.getElementById('scoreList');
+        scoreList.innerHTML = '';
+        let scores = [];
+        
+        snapshot.forEach((childSnapshot) => {
+            scores.push(childSnapshot.val());
+        });
+        
+        // Sắp xếp giảm dần vì Firebase trả về tăng dần
+        scores.reverse();
+
+        if (scores.length === 0) {
+            scoreList.innerHTML = '<li>Chưa có ai ghi điểm!</li>';
+            return;
+        }
+
+        scores.forEach((data, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span>#${index + 1} <b>${data.name}</b></span> <span>${data.score}</span>`;
+            scoreList.appendChild(li);
+        });
+    });
+
+    // 2. Lưu điểm lên Firebase khi Game Over
+    document.getElementById('submitScoreBtn').addEventListener('click', () => {
+        const nameInput = document.getElementById('playerName').value.trim() || 'Người chơi ẩn danh';
+        
+        // Đẩy dữ liệu lên database path 'leaderboard'
+        push(ref(db, 'leaderboard'), {
+            name: nameInput,
+            score: score,
+            timestamp: Date.now()
+        }).then(() => {
+            startGame(); // Reset game sau khi lưu xong
+        }).catch((error) => {
+            console.error("Lỗi lưu điểm: ", error);
+            alert("Có lỗi xảy ra khi lưu điểm!");
+        });
+    });
+
+    // Bắt đầu game khi tải trang
+    startGame();
+</script>
+
+</body>
+</html>
