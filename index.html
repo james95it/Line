@@ -24,16 +24,21 @@
         #scoreList li:nth-child(even) { background-color: #f9f9f9; }
         
         .score-info { font-size: 20px; font-weight: bold; margin: 10px 0; }
-        .next-balls-info { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 15px; font-weight: bold; color: #555; }
-        .next-balls-container { display: flex; gap: 5px; }
+        
+        /* Cụm thông tin lượt liên quan bóng */
+        .panels-container { display: flex; justify-content: center; gap: 20px; margin-bottom: 15px; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .panel-item { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 14px; font-weight: bold; color: #555; }
+        .balls-row { display: flex; gap: 5px; height: 20px; align-items: center; }
+        
         .next-ball { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset -3px -3px 6px rgba(0,0,0,0.3); }
 
-        /* Màu sắc bóng */
-        .color-1 { background-color: #ff4d4d; }
-        .color-2 { background-color: #4da6ff; }
-        .color-3 { background-color: #4dff4d; }
-        .color-4 { background-color: #ffcc00; }
-        .color-5 { background-color: #cc33ff; }
+        /* Bảng màu mới - Phân tách rõ ràng Cam và Vàng */
+        .color-1 { background-color: #ff3333; } /* Đỏ */
+        .color-2 { background-color: #3388ff; } /* Xanh dương */
+        .color-3 { background-color: #22c55e; } /* Xanh lá */
+        .color-4 { background-color: #ffff00; } /* Vàng chanh sáng rực */
+        .color-5 { background-color: #ff6600; } /* Cam đậm hẳn */
+        .color-6 { background-color: #a855f7; } /* Tím */
 
         /* Modal chung */
         .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); text-align: center; z-index: 100; width: 300px; }
@@ -51,9 +56,23 @@
         <h1>Game Lines</h1>
         <div class="score-info">Người chơi: <span id="displayPlayerName" style="color: #007bff;">---</span> | Điểm: <span id="score">0</span></div>
         
-        <div class="next-balls-info">
-            <span>Tiếp theo:</span>
-            <div id="nextBalls" class="next-balls-container"></div>
+        <div class="panels-container">
+            <div class="panel-item">
+                <span>Màu lượt tới:</span>
+                <div id="nextBalls" class="balls-row"></div>
+            </div>
+            <div style="border-left: 1px solid #ddd; height: 40px;"></div>
+            <div class="panel-item">
+                <span>Tất cả màu trong game:</span>
+                <div class="balls-row">
+                    <div class="next-ball color-1" title="Đỏ"></div>
+                    <div class="next-ball color-2" title="Xanh dương"></div>
+                    <div class="next-ball color-3" title="Xanh lá"></div>
+                    <div class="next-ball color-4" title="Vàng"></div>
+                    <div class="next-ball color-5" title="Cam"></div>
+                    <div class="next-ball color-6" title="Tím"></div>
+                </div>
+            </div>
         </div>
 
         <div class="board" id="board"></div>
@@ -86,7 +105,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
     import { getDatabase, ref, push, onValue, query, orderByChild, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-    // Cấu hình Firebase
+    // Cấu hình Firebase giữ nguyên của bạn
     const firebaseConfig = {
       apiKey: "AIzaSyAuwQKAbHS2GBpw5LWik33XcnYQzBtRgFc",
       authDomain: "line-76bbe.firebaseapp.com",
@@ -103,14 +122,14 @@
 
     // --- GAME LOGIC ---
     const boardSize = 9;
-    const numColors = 5;
+    const numColors = 6; // Đã nâng lên 6 màu để có cả Cam và Vàng riêng biệt
     let grid = Array(boardSize).fill(null).map(() => Array(boardSize).fill(0));
     let score = 0;
     let selectedCell = null;
     let gameOver = false;
     let isAnimating = false;
     let currentPlayerName = "Người chơi ẩn danh";
-    let nextColors = []; // Mảng chứa các màu sẽ ra tiếp theo
+    let nextColors = [];
 
     const boardEl = document.getElementById('board');
     const scoreEl = document.getElementById('score');
@@ -155,7 +174,6 @@
         }
     }
 
-    // Sinh ngẫu nhiên 3 màu tiếp theo và cập nhật UI
     function generateNextColors() {
         nextColors = [];
         for (let i = 0; i < 3; i++) {
@@ -192,7 +210,7 @@
             const randIdx = Math.floor(Math.random() * emptyCells.length);
             const { r, c } = emptyCells.splice(randIdx, 1)[0];
             
-            grid[r][c] = nextColors[i]; // Lấy màu từ mảng nextColors đã chuẩn bị trước
+            grid[r][c] = nextColors[i];
             checkLinesAt(r, c);
         }
         
@@ -201,7 +219,7 @@
             return endGame();
         }
         
-        generateNextColors(); // Chuẩn bị sẵn 3 màu cho lượt đi tiếp theo
+        generateNextColors();
         renderBoard();
     }
 
@@ -347,9 +365,9 @@
         document.getElementById('gameOverModal').style.display = 'none';
         initBoard();
         
-        generateNextColors(); // Bốc 3 màu đầu tiên
-        spawnBalls();         // Nhả 3 màu đó lên bàn -> Bốc 3 màu mới
-        spawnBalls();         // Nhả tiếp 3 màu lên bàn -> Bốc 3 màu để show lên góc (Tổng có 6 bóng khởi đầu)
+        generateNextColors();
+        spawnBalls();
+        spawnBalls();
     }
 
     document.getElementById('replayBtn').addEventListener('click', () => {
