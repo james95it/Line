@@ -11,7 +11,9 @@
         .board { display: grid; grid-template-columns: repeat(9, 40px); grid-template-rows: repeat(9, 40px); gap: 2px; background-color: #ccc; padding: 2px; border-radius: 5px; margin: 0 auto; }
         .cell { width: 40px; height: 40px; background-color: #fff; border-radius: 3px; display: flex; justify-content: center; align-items: center; cursor: pointer; }
         .cell:hover { background-color: #e0e0e0; }
-        .ball { width: 30px; height: 30px; border-radius: 50%; box-shadow: inset -5px -5px 10px rgba(0,0,0,0.3); transition: transform 0.2s; }
+        
+        /* Quả bóng và hiệu ứng */
+        .ball { width: 30px; height: 30px; border-radius: 50%; box-shadow: inset -5px -5px 10px rgba(0,0,0,0.3); transition: all 0.1s ease-in-out; }
         .ball.selected { transform: scale(1.2); animation: bounce 0.5s infinite alternate; }
         @keyframes bounce { from { transform: scale(1.1) translateY(0); } to { transform: scale(1.1) translateY(-5px); } }
         
@@ -29,9 +31,13 @@
         .color-4 { background-color: #ffcc00; }
         .color-5 { background-color: #cc33ff; }
 
-        #gameOverModal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); text-align: center; z-index: 100; }
-        #gameOverModal input { padding: 8px; margin: 10px 0; width: 80%; }
-        #gameOverModal button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        /* Modal chung */
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); text-align: center; z-index: 100; width: 300px; }
+        .modal input { padding: 10px; margin: 15px 0; width: 80%; border: 1px solid #ccc; border-radius: 5px; }
+        .modal button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .modal button:hover { background: #0056b3; }
+        
+        #startModal { display: block; }
     </style>
 </head>
 <body>
@@ -39,7 +45,7 @@
 <div class="container">
     <div class="game-area">
         <h1>Game Lines</h1>
-        <div class="score-info">Điểm: <span id="score">0</span></div>
+        <div class="score-info">Người chơi: <span id="displayPlayerName" style="color: #007bff;">---</span> | Điểm: <span id="score">0</span></div>
         <div class="board" id="board"></div>
     </div>
 
@@ -51,12 +57,19 @@
     </div>
 </div>
 
-<div id="gameOverModal">
-    <h2>Game Over!</h2>
-    <p>Điểm của bạn: <span id="finalScore">0</span></p>
-    <input type="text" id="playerName" placeholder="Nhập tên của bạn..." />
+<div id="startModal" class="modal">
+    <h2>Chào mừng!</h2>
+    <p>Vui lòng nhập tên để bắt đầu</p>
+    <input type="text" id="playerNameInput" placeholder="Tên của bạn..." />
     <br>
-    <button id="submitScoreBtn">Lưu điểm & Chơi lại</button>
+    <button id="startBtn">Vào Game</button>
+</div>
+
+<div id="gameOverModal" class="modal">
+    <h2>Game Over!</h2>
+    <p>Điểm của bạn: <b id="finalScore" style="font-size: 24px; color: #ff4d4d;">0</b></p>
+    <p style="font-size: 14px; color: #666;">Điểm đã được tự động lưu!</p>
+    <button id="replayBtn">Chơi lại</button>
 </div>
 
 <script type="module">
@@ -75,7 +88,6 @@
       measurementId: "G-TV9PRT5R6K"
     };
 
-    // Khởi tạo Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
@@ -86,11 +98,20 @@
     let score = 0;
     let selectedCell = null;
     let gameOver = false;
+    let isAnimating = false; // Khóa chống click khi bóng đang chạy
+    let currentPlayerName = "Người chơi ẩn danh";
 
     const boardEl = document.getElementById('board');
     const scoreEl = document.getElementById('score');
 
-    // Khởi tạo bảng HTML
+    document.getElementById('startBtn').addEventListener('click', () => {
+        const inputName = document.getElementById('playerNameInput').value.trim();
+        if (inputName !== "") currentPlayerName = inputName;
+        document.getElementById('displayPlayerName').innerText = currentPlayerName;
+        document.getElementById('startModal').style.display = 'none';
+        startGame();
+    });
+
     function initBoard() {
         boardEl.innerHTML = '';
         for (let r = 0; r < boardSize; r++) {
@@ -105,7 +126,6 @@
         }
     }
 
-    // Cập nhật giao diện từ mảng grid
     function renderBoard() {
         for (let r = 0; r < boardSize; r++) {
             for (let c = 0; c < boardSize; c++) {
@@ -123,7 +143,6 @@
         }
     }
 
-    // Lấy các ô trống
     function getEmptyCells() {
         let empty = [];
         for (let r = 0; r < boardSize; r++) {
@@ -134,7 +153,6 @@
         return empty;
     }
 
-    // Sinh 3 bóng ngẫu nhiên
     function spawnBalls() {
         const emptyCells = getEmptyCells();
         if (emptyCells.length === 0) return endGame();
@@ -144,38 +162,84 @@
             const randIdx = Math.floor(Math.random() * emptyCells.length);
             const { r, c } = emptyCells.splice(randIdx, 1)[0];
             grid[r][c] = Math.floor(Math.random() * numColors) + 1;
-            checkLinesAt(r, c); // Kiểm tra xem lúc sinh ra có ăn điểm luôn không
+            checkLinesAt(r, c);
         }
         
         if (getEmptyCells().length === 0) endGame();
         renderBoard();
     }
 
-    // Tìm đường đi (BFS)
-    function hasPath(startR, startC, targetR, targetC) {
+    // Thuật toán BFS cải tiến để tìm và TRẢ VỀ ĐƯỜNG ĐI CHI TIẾT
+    function getPath(startR, startC, targetR, targetC) {
         let visited = Array(boardSize).fill(null).map(() => Array(boardSize).fill(false));
+        let parent = Array(boardSize).fill(null).map(() => Array(boardSize).fill(null)); // Lưu vết đường đi
         let queue = [{ r: startR, c: startC }];
         visited[startR][startC] = true;
         const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+        let found = false;
 
         while (queue.length > 0) {
             const { r, c } = queue.shift();
-            if (r === targetR && c === targetC) return true;
+            if (r === targetR && c === targetC) {
+                found = true;
+                break;
+            }
 
             for (let [dr, dc] of dirs) {
                 const nr = r + dr, nc = c + dc;
                 if (nr >= 0 && nr < boardSize && nc >= 0 && nc < boardSize) {
                     if (!visited[nr][nc] && grid[nr][nc] === 0) {
                         visited[nr][nc] = true;
+                        parent[nr][nc] = { r, c }; // Lưu ô trước đó của ô (nr, nc)
                         queue.push({ r: nr, c: nc });
                     }
                 }
             }
         }
-        return false;
+
+        if (!found) return null;
+
+        // Truy vết ngược lại từ Đích về Đích để lấy mảng đường đi
+        let path = [];
+        let curr = { r: targetR, c: targetC };
+        while (curr) {
+            path.push(curr);
+            curr = parent[curr.r][curr.c];
+        }
+        return path.reverse(); // Đảo ngược mảng để có thứ tự từ [Bắt đầu -> ... -> Đích]
     }
 
-    // Kiểm tra ăn bóng (4 hướng)
+    // Hàm thực hiện hiệu ứng di chuyển bóng qua từng ô
+    async function animateBallMove(path, color) {
+        isAnimating = true;
+        const start = path[0];
+        grid[start.r][start.c] = 0; // Xóa bóng ở vị trí xuất phát
+
+        for (let i = 1; i < path.length; i++) {
+            const curr = path[i];
+            grid[curr.r][curr.c] = color; // Đặt bóng vào ô tiếp theo
+            renderBoard();
+
+            // Nếu chưa tới đích, đợi 60 mili-giây rồi xóa bóng ở ô hiện tại để đi tiếp
+            if (i < path.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 60));
+                grid[curr.r][curr.c] = 0;
+            }
+        }
+
+        // Đã đến ô đích cuối cùng
+        const target = path[path.length - 1];
+        const cleared = checkLinesAt(target.r, target.c);
+        selectedCell = null;
+        
+        if (!cleared) {
+            spawnBalls(); // Nếu không ăn điểm thì sinh bóng mới
+        } else {
+            renderBoard(); // Nếu ăn điểm thì vẽ lại giao diện
+        }
+        isAnimating = false;
+    }
+
     function checkLinesAt(r, c) {
         const color = grid[r][c];
         if (color === 0) return false;
@@ -206,62 +270,60 @@
                 const [rr, cc] = pos.split(',').map(Number);
                 grid[rr][cc] = 0;
             });
-            score += (ballsToRemove.size * 2); // Cộng điểm
+            score += (ballsToRemove.size * 2);
             scoreEl.innerText = score;
             return true;
         }
         return false;
     }
 
-    // Xử lý khi click vào ô
-    function handleCellClick(r, c) {
-        if (gameOver) return;
+    async function handleCellClick(r, c) {
+        if (gameOver || isAnimating) return; // Chặn click khi đang chạy hiệu ứng
 
         if (grid[r][c] > 0) {
-            // Chọn bóng
             selectedCell = { r, c };
             renderBoard();
         } else if (selectedCell) {
-            // Di chuyển bóng nếu có đường đi
-            if (hasPath(selectedCell.r, selectedCell.c, r, c)) {
-                grid[r][c] = grid[selectedCell.r][selectedCell.c];
-                grid[selectedCell.r][selectedCell.c] = 0;
-                
-                const cleared = checkLinesAt(r, c);
-                selectedCell = null;
-                
-                if (!cleared) {
-                    spawnBalls(); // Nếu di chuyển không ăn được điểm thì sinh bóng mới
-                } else {
-                    renderBoard(); // Cập nhật lại board nếu ăn được điểm
-                }
+            const path = getPath(selectedCell.r, selectedCell.c, r, c);
+            if (path) {
+                const color = grid[selectedCell.r][selectedCell.c];
+                await animateBallMove(path, color); // Chạy hiệu ứng di chuyển bất đồng bộ
             }
         }
     }
 
-    // Kết thúc game
     function endGame() {
         gameOver = true;
         document.getElementById('finalScore').innerText = score;
         document.getElementById('gameOverModal').style.display = 'block';
+
+        if (score > 0) {
+            push(ref(db, 'leaderboard'), {
+                name: currentPlayerName,
+                score: score,
+                timestamp: Date.now()
+            }).catch((error) => console.error("Lỗi lưu điểm: ", error));
+        }
     }
 
-    // Khởi động game
     function startGame() {
         grid = Array(boardSize).fill(null).map(() => Array(boardSize).fill(0));
         score = 0;
         gameOver = false;
         selectedCell = null;
+        isAnimating = false;
         scoreEl.innerText = score;
         document.getElementById('gameOverModal').style.display = 'none';
         initBoard();
         spawnBalls();
-        spawnBalls(); // Sinh 6 bóng ban đầu
+        spawnBalls();
     }
 
-    // --- FIREBASE LOGIC ---
+    document.getElementById('replayBtn').addEventListener('click', () => {
+        startGame();
+    });
 
-    // 1. Lắng nghe và hiển thị Top 10 Điểm Cao
+    // --- FIREBASE LOGIC ---
     const topScoresRef = query(ref(db, 'leaderboard'), orderByChild('score'), limitToLast(10));
     
     onValue(topScoresRef, (snapshot) => {
@@ -273,7 +335,6 @@
             scores.push(childSnapshot.val());
         });
         
-        // Sắp xếp giảm dần vì Firebase trả về tăng dần
         scores.reverse();
 
         if (scores.length === 0) {
@@ -287,26 +348,6 @@
             scoreList.appendChild(li);
         });
     });
-
-    // 2. Lưu điểm lên Firebase khi Game Over
-    document.getElementById('submitScoreBtn').addEventListener('click', () => {
-        const nameInput = document.getElementById('playerName').value.trim() || 'Người chơi ẩn danh';
-        
-        // Đẩy dữ liệu lên database path 'leaderboard'
-        push(ref(db, 'leaderboard'), {
-            name: nameInput,
-            score: score,
-            timestamp: Date.now()
-        }).then(() => {
-            startGame(); // Reset game sau khi lưu xong
-        }).catch((error) => {
-            console.error("Lỗi lưu điểm: ", error);
-            alert("Có lỗi xảy ra khi lưu điểm!");
-        });
-    });
-
-    // Bắt đầu game khi tải trang
-    startGame();
 </script>
 
 </body>
